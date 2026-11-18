@@ -142,7 +142,7 @@ class MonorepoPublisher:
         while queue:
             curr = queue.popleft()
             order.append(curr)
-            for neighbor in adj[curr]:
+            for neighbor in sorted(adj[curr]):
                 in_degree[neighbor] -= 1
                 if in_degree[neighbor] == 0:
                     queue.append(neighbor)
@@ -296,15 +296,15 @@ class MonorepoPublisher:
                     # In dry-run mode:
                     # If this crate has internal dependencies that are not yet on crates.io,
                     # cargo package will fail to resolve them from the index (since they aren't uploaded yet).
-                    # We check TOML validity and report what dependencies are pending publication.
+                    # Defer package verification until those dependencies are available.
                     pending_deps = [dep for dep in self.packages[name]["deps"]
                                     if not self.is_published_on_crates_io(dep, self.packages.get(dep, {}).get("version", "0.1.0"))]
 
                     if pending_deps:
-                        print(f"       [DRY-RUN] Manifest verified! (Will publish after index sync of: {', '.join(pending_deps)})")
+                        print(f"       [DRY-RUN] Packaging deferred until dependencies are indexed: {', '.join(sorted(pending_deps))}")
                     else:
                         print(f"       [DRY-RUN] Verifying packaging for {name}...")
-                        cmd = ["cargo", "package", "--allow-dirty", "--no-verify", "-p", name]
+                        cmd = ["cargo", "package", "--allow-dirty", "-p", name]
                         res = subprocess.run(cmd, cwd=self.workspace_root, capture_output=True, text=True)
                         if res.returncode != 0:
                             print(f"       [FAILED] cargo package failed:\n{res.stderr}")
@@ -314,7 +314,7 @@ class MonorepoPublisher:
                 else:
                     # In actual publish mode
                     print(f"       [PUBLISHING] Publishing {name} v{ver} to crates.io...")
-                    cmd = ["cargo", "publish", "--allow-dirty", "--no-verify", "-p", name]
+                    cmd = ["cargo", "publish", "--allow-dirty", "-p", name]
                     if self.token:
                         cmd.extend(["--token", self.token])
 

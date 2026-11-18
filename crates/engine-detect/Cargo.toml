@@ -1,6 +1,6 @@
 [package]
 name = "engine-detect"
-version = "0.1.0"
+version = "0.1.1"
 edition.workspace = true
 license.workspace = true
 description = "Identifies which engine (SiglusEngine, RealLive, AVG32 or UK2) a game directory uses"

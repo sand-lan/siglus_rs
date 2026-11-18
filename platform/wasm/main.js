@@ -29,7 +29,8 @@ const playerTitle = $("player-title");
 const exitButton = $("exit-button");
 const menuButton = $("menu-button");
 const skipButton = $("skip-button");
-const canvas = $("siglus-canvas");
+const siglusCanvas = $("siglus-canvas");
+const framebufferCanvas = $("framebuffer-canvas");
 const reportDialog = $("report-dialog");
 const reportTitle = $("report-title");
 const reportBody = $("report-body");
@@ -194,7 +195,6 @@ const db = (() => {
   }
   return {
     put: (store, key, value) => tx(store, "readwrite", (s) => s.put(value, key)),
-    del: (store, key) => tx(store, "readwrite", (s) => s.delete(key)),
     entries,
   };
 })();
@@ -211,6 +211,7 @@ const db = (() => {
 
 const files = new Map(); // path -> File
 const overlay = new Map(); // path -> Uint8Array (written by games)
+const removed = new Map(); // folded path -> original path of a persistent deletion
 const folded = new Map(); // folded path -> path
 const dirChildren = new Map(); // dir -> Set(child name)
 let viewPrefix = "";
@@ -229,9 +230,15 @@ function registerFile(path, file) {
   path = normalizePath(path);
   if (!path) return;
   const key = foldPath(path);
+  if (removed.has(key)) return;
   const existing = folded.get(key);
   if (existing && existing !== path) {
-    files.delete(existing);
+    if (overlay.has(existing)) {
+      path = existing;
+    } else {
+      files.delete(existing);
+      dirChildren.get(parentOf(existing))?.delete(baseOf(existing));
+    }
   }
   files.set(path, file);
   folded.set(key, path);
@@ -242,7 +249,8 @@ function resolvePath(path) {
   let p = normalizePath(path);
   if (viewPrefix) p = p ? `${viewPrefix}/${p}` : viewPrefix;
   if (overlay.has(p) || files.has(p)) return p;
-  return folded.get(foldPath(p)) || p;
+  const key = foldPath(p);
+  return folded.get(key) || removed.get(key) || p;
 }
 
 function readFileSync(file) {
@@ -301,6 +309,7 @@ globalThis.siglusKnownFileCount = function siglusKnownFileCount() {
 globalThis.gameFsWrite = function gameFsWrite(path, bytes) {
   const p = resolvePath(path);
   const copy = new Uint8Array(bytes); // the view points into wasm memory
+  removed.delete(foldPath(p));
   overlay.set(p, copy);
   folded.set(foldPath(p), p);
   addChild(p);
@@ -309,16 +318,22 @@ globalThis.gameFsWrite = function gameFsWrite(path, bytes) {
 
 globalThis.gameFsRemove = function gameFsRemove(path) {
   const p = resolvePath(path);
-  const had = overlay.delete(p) || files.delete(p);
-  if (!had) throw new Error(`file not found: ${path}`);
+  if (!overlay.has(p) && !files.has(p)) throw new Error(`file not found: ${path}`);
+  overlay.delete(p);
+  files.delete(p);
   folded.delete(foldPath(p));
+  removed.set(foldPath(p), p);
   const siblings = dirChildren.get(parentOf(p));
   if (siblings) siblings.delete(baseOf(p));
-  db.del("files", p);
+  db.put("files", p, null);
 };
 
 async function restoreSavedFiles() {
   for (const [path, bytes] of await db.entries("files")) {
+    if (bytes === null) {
+      removed.set(foldPath(path), path);
+      continue;
+    }
     overlay.set(path, bytes);
     folded.set(foldPath(path), path);
     addChild(path);
@@ -643,12 +658,16 @@ async function launchGame(game) {
     libraryScreen.style.display = "none";
     playerScreen.style.display = "block";
     playerTitle.textContent = game.title;
+    const isSiglus = game.engine === "siglus";
+    siglusCanvas.hidden = !isSiglus;
+    framebufferCanvas.hidden = isSiglus;
+    const canvas = isSiglus ? siglusCanvas : framebufferCanvas;
     canvas.focus();
 
-    if (game.engine === "siglus") {
+    if (isSiglus) {
       await launchSiglus(game);
     } else {
-      launchFramebuffer(game);
+      launchFramebuffer(game, canvas);
     }
     hideLaunching();
   } catch (error) {
@@ -677,7 +696,7 @@ async function launchSiglus(game) {
   running = { kind: "siglus" };
   menuButton.style.display = "none";
   skipButton.style.display = "none";
-  await start_siglus_from_directory("siglus-canvas", JSON.stringify(list));
+  await start_siglus_from_directory(siglusCanvas.id, JSON.stringify(list));
 }
 
 const KEY_CODES = {
@@ -709,7 +728,7 @@ function keyCodeFor(event) {
   return 0;
 }
 
-function launchFramebuffer(game) {
+function launchFramebuffer(game, canvas) {
   const web = new WebGame(game.root, game.engine, game.nls || undefined);
   const ctx = canvas.getContext("2d");
   const back = document.createElement("canvas");

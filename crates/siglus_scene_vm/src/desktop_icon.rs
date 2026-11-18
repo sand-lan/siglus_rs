@@ -59,7 +59,7 @@ fn load_icon(project_dir: &Path) -> image::RgbaImage {
         }
     }
     image::load_from_memory_with_format(
-        include_bytes!("../../../icon/Icon.png"),
+        include_bytes!("../assets/Icon.png"),
         image::ImageFormat::Png,
     )
     .expect("bundled Siglus icon")

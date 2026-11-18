@@ -123,9 +123,7 @@ fn classify(layout: &mut GameLayout) -> EngineKind {
         layout.evidence.push(format!("{} present", file_name(path)));
         return EngineKind::Uk2;
     }
-    if let Some(path) = find_file(&layout.root, |name, head| {
-        name.ends_with(".MES") && head.starts_with(UK2_MES_MAGIC)
-    }) {
+    if let Some(path) = find_uk2_scene(&layout.root) {
         layout
             .evidence
             .push(format!("{} has the UK2 MES header", file_name(&path)));
@@ -295,17 +293,15 @@ fn classify_loose_scenes(directory: &Path) -> Option<(EngineKind, String)> {
     by_name
 }
 
-fn find_file(directory: &Path, accept: impl Fn(&str, &[u8]) -> bool) -> Option<PathBuf> {
+fn find_uk2_scene(directory: &Path) -> Option<PathBuf> {
     let mut entries: Vec<_> = game_fs::read_dir(directory).ok()?.flatten().collect();
     entries.sort_by_key(|entry| entry.file_name());
     entries.into_iter().find_map(|entry| {
-        let name = entry.file_name().to_str()?.to_ascii_uppercase();
         let path = entry.path();
-        entry
-            .is_file()
-            .then(|| game_fs::read_head(&path, 32))
-            .filter(|head| accept(&name, head))
-            .map(|_| path)
+        if !entry.is_file() || !path.extension()?.eq_ignore_ascii_case("mes") {
+            return None;
+        }
+        (game_fs::read_head(&path, UK2_MES_MAGIC.len()) == UK2_MES_MAGIC).then_some(path)
     })
 }
 
@@ -420,7 +416,9 @@ mod tests {
         let dir = TempDir::new("uk2mes");
         let mut mes = UK2_MES_MAGIC.to_vec();
         mes.push(0);
-        dir.write("START.MES", &mes);
+        dir.write("movie.bin", &mes);
+        assert_eq!(detect(&dir.0).unwrap(), EngineKind::Unknown);
+        dir.write("START.MeS", &mes);
         assert_eq!(detect(&dir.0).unwrap(), EngineKind::Uk2);
     }
 

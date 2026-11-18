@@ -27,6 +27,21 @@ pub(super) struct Player {
     pub(super) inner: ElunaPlayer,
 }
 
+// The vendored Eluna has an inherent swap_scene that moves the previous frame.
+// Provide the same operation for the registry's 0.1.0 API.
+#[allow(dead_code)]
+trait SwapScene {
+    fn swap_scene(&mut self, scene: EmoteStaticScene) -> EmoteStaticScene;
+}
+
+impl SwapScene for ElunaPlayer {
+    fn swap_scene(&mut self, scene: EmoteStaticScene) -> EmoteStaticScene {
+        let previous = self.scene().clone();
+        self.replace_scene(scene);
+        previous
+    }
+}
+
 impl Player {
     pub(super) fn from_sources(sources: &[&[u8]], key: Option<u32>) -> Result<Self> {
         let mut options = EmoteLoadOptions::default();
@@ -129,10 +144,12 @@ impl Player {
                 )
         };
         let scene = build(&self.inner, self.inner.scene())?;
-        let previous = self.inner.swap_scene(scene);
         if physics_ticks > 0.0 && self.inner.is_physics_enabled() {
+            let previous = self.inner.swap_scene(scene);
             self.inner.evaluate_physics_for_current_scene(physics_ticks);
             self.inner.replace_scene(build(&self.inner, &previous)?);
+        } else {
+            self.inner.replace_scene(scene);
         }
         Ok(())
     }

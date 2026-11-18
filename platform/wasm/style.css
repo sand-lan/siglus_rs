@@ -331,7 +331,7 @@ button:hover,
   background: #000;
 }
 
-#siglus-canvas {
+#player-screen > canvas:not([hidden]) {
   position: absolute;
   inset: 0;
   width: 100%;

@@ -1,6 +1,6 @@
 # siglus_rs
 
-<img src="./icon/Icon.png" alt="icon" align="left" width="100" style="margin-right: 10px;" />
+<img src="./crates/siglus_scene_vm/assets/Icon.png" alt="icon" align="left" width="100" style="margin-right: 10px;" />
 
 **siglus_rs** is an unofficial full Rust reimplementation of **UK2, AVG32, RealLive, and SiglusEngine**, with a primary focus on SiglusEngine.
 
